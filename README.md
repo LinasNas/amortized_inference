@@ -1,4 +1,4 @@
-# amortized_inference
+# belief_neglect
 All code and data used in the belief neglect project.
 
 ## Structure
