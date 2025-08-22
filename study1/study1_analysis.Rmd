@@ -1,0 +1,166 @@
+---
+title: "Study 1: analysis"
+output: html_document
+date: "2025-08-22"
+---
+
+
+```{r}
+# Load required packages
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+
+# Load the CSV
+df <- read_csv("data/group4/filtered_data_group4.csv")
+```
+
+## Create summarized version
+```{r}
+summary_df <- df %>%
+  group_by(Participant_id, is_val) %>%
+  summarise(Test_Score = mean(Test_Score, na.rm = TRUE), .groups = 'drop') %>%
+  pivot_wider(names_from = is_val, values_from = Test_Score,
+              names_prefix = "Choice_") %>%
+  rename(Forced_Choice_Mean = Choice_0,
+         Free_Choice_Score = Choice_1) %>%
+  drop_na()  
+```
+
+## Paired t-test: Free vs Forced
+```{r}
+# Paired t-test
+t_test_result <- t.test(summary_df$Free_Choice_Score,
+                        summary_df$Forced_Choice_Mean,
+                        paired = TRUE)
+
+cat(sprintf("Mean (Free Choice): %.2f\n", mean(summary_df$Free_Choice_Score)))
+cat(sprintf("Mean (Forced Choice): %.2f\n", mean(summary_df$Forced_Choice_Mean)))
+cat(sprintf("Paired t-test: t = %.2f, p = %.4f\n",
+            t_test_result$statistic,
+            t_test_result$p.value))
+```
+
+## Compute means and standard deviations
+```{r}
+free_mean <- mean(summary_df$Free_Choice_Score)
+free_sd <- sd(summary_df$Free_Choice_Score)
+
+forced_mean <- mean(summary_df$Forced_Choice_Mean)
+forced_sd <- sd(summary_df$Forced_Choice_Mean)
+
+cat(sprintf("Free Choice — Mean: %.2f, SD: %.2f\n", free_mean, free_sd))
+cat(sprintf("Forced Choice — Mean: %.2f, SD: %.2f\n", forced_mean, forced_sd))
+```
+
+## Count participants showing correspondence bias (≥90%)
+```{r}
+num_correspondence_bias <- sum(summary_df$Forced_Choice_Mean >= 90)
+total_participants <- nrow(summary_df)
+
+cat(sprintf("Participants showing correspondence bias (≥90%%): %d / %d\n",
+            num_correspondence_bias, total_participants))
+
+```
+
+## One-sample t-test on Forced Choice against 50%
+```{r}
+# One-sample t-test
+t_test_one_sample <- t.test(summary_df$Forced_Choice_Mean, mu = 50)
+
+n <- nrow(summary_df)
+mean_forced <- mean(summary_df$Forced_Choice_Mean)
+sd_forced <- sd(summary_df$Forced_Choice_Mean)
+
+cat(sprintf("One-sample t-test against 50%%: t(%d) = %.2f, p = %.4e\n",
+            n - 1, t_test_one_sample$statistic, t_test_one_sample$p.value))
+cat(sprintf("Mean: %.2f%%, SD: %.2f%%, N = %d\n",
+            mean_forced, sd_forced, n))
+```
+
+## Plots
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+
+panel_a_data <- data.frame(
+  condition = c("Free", "Forced"),
+  mean = c(mean(summary_df$Free_Choice_Score),
+           mean(summary_df$Forced_Choice_Mean)),
+  se = c(sd(summary_df$Free_Choice_Score) / sqrt(nrow(summary_df)),
+         sd(summary_df$Forced_Choice_Mean) / sqrt(nrow(summary_df)))
+)
+panel_a_data$condition <- factor(panel_a_data$condition, levels = c("Free", "Forced"))
+
+color_palette <- c("Free" = "#7B3294", "Forced" = "#E66101")
+
+# ---- Plot A: Bar plot with black error bars and larger text ----
+plot_a <- ggplot(panel_a_data, aes(x = condition, y = mean, fill = condition)) +
+  geom_bar(stat = "identity", width = 0.6, color = "black") +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                width = 0.2, size = 0.75, color = "black") +
+  scale_fill_manual(values = color_palette) +
+  coord_cartesian(ylim = c(0, NA)) +
+  labs(
+    x = "\nCondition",
+    y = "Mean Preference Rating (%)\n",
+    title = "A. Mean Preference Ratings"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    legend.position = "none",
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    plot.title = element_text(size = 17, face = "bold")
+  )
+
+# ---- Plot B: Free Choice Distribution ----
+# ---- Plot B: Free Choice Distribution ----
+plot_b <- ggplot(summary_df, aes(x = Free_Choice_Score)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 binwidth = 5, center = 50,
+                 fill = color_palette["Free"], color = "black", alpha = 0.8) +
+  labs(
+    x = "\nScore",
+    y = "\nProportion\n",
+    title = "B. Free Choice Distribution"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    plot.title = element_text(size = 17, face = "bold")
+  )
+
+# ---- Plot C: Forced Choice Distribution ----
+plot_c <- ggplot(summary_df, aes(x = Forced_Choice_Mean)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 binwidth = 5, center = 50,
+                 fill = color_palette["Forced"], color = "black", alpha = 0.8) +
+  labs(
+    x = "\nMean Score",
+    y = "\nProportion\n",
+    title = "C. Forced Choice Distribution"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 14),
+    axis.title = element_text(size = 16),
+    plot.title = element_text(size = 17, face = "bold")
+  )
+
+# ---- Combine and Save ----
+final_plot <- plot_a + plot_b + plot_c + plot_layout(ncol = 3)
+
+ggsave("plots/study1_results_bar_version.png", final_plot, width = 13, height = 4.5, dpi = 300)
+```
+

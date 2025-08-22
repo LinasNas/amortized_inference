@@ -1,0 +1,198 @@
+---
+title: "Study 1: analysis"
+output: html_document
+date: "2025-08-22"
+---
+
+# Code used for the analysis and graphs
+
+## 1. Regressions
+General form of the regression: 
+judgment ~ group_type*question_type + (1|participant)
+
+### 1. A. Group 1 (Relevance training) vs. Group 2 (Irrelevance training)
+```{r}
+library(lmerTest)
+library(dplyr)
+
+# Load the data from CSV
+data <- read.csv('data/study2_cleaned_data.csv')
+
+# filter Groups 1 and 2
+data <- subset(data, Group %in% c(1, 2))
+
+# convert factors to numeric codes
+# Group 1 is Relevance training, Group 2 is Irrelevance training
+data$group_type <- ifelse(data$Group == 1, -0.5, 0.5) 
+
+# Validation questions coded as -0.5, test questions as 0.5
+data$question_type <- ifelse(data$is_val == 1, -0.5, 0.5)  
+
+# Run the linear mixed-effects regression
+model <- lmer(Test_Score ~ group_type * question_type + (1|Participant_id), data=data)
+
+# Output the summary of the model
+summary(model)
+```
+
+
+### 1. B. Group 2 (Irrelevance training) vs. Group 3 (No training)
+```{r}
+library(lmerTest)
+
+data <- read.csv('data/study2_cleaned_data.csv')
+
+# Filter out the data for Groups 2 and 3 only
+data <- subset(data, Group %in% c(2, 3))
+
+# Convert group type and question type to effect coding
+# Group 2 is Irrelevance training, Group 3 is No training
+data$group_type <- ifelse(data$Group == 2, -0.5, 0.5)
+
+# Code validation questions as -0.5, test as 0.5
+data$question_type <- ifelse(data$is_val == 1, -0.5, 0.5)  
+
+# Run the linear mixed-effects regression using lmer
+model <- lmer(Test_Score ~ group_type * question_type + (1|Participant_id), data=data)
+
+# Output the summary of the model
+summary(model)
+```
+
+
+## 2. Graph the results
+```{r}
+data <- read.csv('data/study2_cleaned_data.csv')
+
+# Calculate means and 95% CIs for each group and condition
+results <- data %>%
+  group_by(Group, is_val) %>%
+  summarize(
+    mean = mean(Test_Score, na.rm = TRUE),
+    ci = qt(0.975, df = n() - 1) * sd(Test_Score, na.rm = TRUE) / sqrt(n())
+  )
+results
+
+data %>%
+  filter(is_val == 0) %>%
+  group_by(Group) %>%
+  summarize(n_trials = n())
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+data <- read.csv('data/study2_cleaned_data.csv')
+
+results <- data %>%
+  group_by(Group, is_val) %>%
+  summarize(
+    mean = mean(Test_Score, na.rm = TRUE),
+    ci = qt(0.975, df = n() - 1) * sd(Test_Score, na.rm = TRUE) / sqrt(n())
+  )
+
+x_coords <- data.frame(
+  Group = rep(1:3, each = 2),
+  is_val = rep(0:1, 3),
+  x_pos = c(0, 0.4, 1, 1.4, 2, 2.4)
+)
+
+results <- merge(results, x_coords, by = c("Group", "is_val"))
+
+# Define group colors explicitly
+group_colors <- c("1" = "#F8766D", "2" = "#00BA38", "3" = "#619CFF")
+
+# Plotting
+ggplot(results, aes(x = x_pos, y = mean, color = factor(Group))) +
+  geom_errorbar(aes(ymin = mean - ci, ymax = mean + ci), width = 0.1, size = 1) + 
+  geom_point(aes(shape = factor(is_val)), size = 5) +
+  scale_shape_manual(values = c(16, 18), labels = c("Test", "Validation")) + 
+  scale_color_manual(values = group_colors) +  # ✅ Add this line
+  scale_x_continuous(breaks = c(0.2, 1.2, 2.2), labels = c("Group 1\n(Relevance Training)", "Group 2\n(Irrelevance Training)", "Group 3\n(No Training)")) +
+  labs(
+    title = "",
+    x = "",
+    y = "Average Score\n",  
+    color = "Group",
+    shape = "Question Type",
+    linetype = "Optimal sol."
+  ) +
+  scale_linetype_manual(values = c("dotted", "dashed"), 
+                        labels = c("Test", "Validation")) + 
+  coord_cartesian(ylim = c(50, NA)) + 
+  theme_minimal(base_size = 15) +  
+  theme(
+    legend.position = "bottom",
+    legend.box = "vertical",
+    legend.direction = "horizontal",
+    legend.box.just = "center",
+    legend.spacing.x = unit(0.5, 'cm'),  
+    legend.text = element_text(size = 12), 
+    legend.title = element_text(size = 14), 
+    axis.title.x = element_text(size = 16),  
+    axis.title.y = element_text(size = 16),  
+    axis.text.x = element_text(size = 14),   
+    axis.text.y = element_text(size = 14),   
+    plot.background = element_rect(fill = "white", color = NA)  
+  ) +
+  geom_hline(aes(yintercept = 66.7, linetype = "Test Question solution"), color = "grey", size = 1.5) +
+  geom_hline(aes(yintercept = 100, linetype = "Validation Question"), color = "grey", size = 1) +
+  guides(
+    shape = guide_legend(nrow = 1, byrow = TRUE),   
+    color = guide_legend(nrow = 1, byrow = TRUE),   
+    linetype = guide_legend(nrow = 1, byrow = TRUE) 
+  )
+
+# Save the plot
+ggsave("plots/results_plot.png", dpi = 300, width = 10, height = 8)
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Load dataset
+data <- read.csv('data/study2_cleaned_data.csv')
+
+# Filter to test trials only
+data <- data %>%
+  filter(is_val == 0 & Group %in% c(1, 2, 3))
+
+# Color palette for groups
+group_colors <- c("1" = "#F8766D", "2" = "#00BA38", "3" = "#619CFF")
+
+# Histogram plot
+ggplot(data, aes(x = Test_Score, fill = factor(Group))) +
+  geom_histogram(
+    aes(y = after_stat(count / sum(count))),
+    binwidth = 5,
+    center = 50,
+    color = "black",
+    alpha = 1.0
+  ) +
+  facet_wrap(~ Group, labeller = as_labeller(c(
+    `1` = "Group 1: Relevance Training",
+    `2` = "Group 2: Ireelevance Training",
+    `3` = "Group 3: No Training"
+  ))) +
+  scale_fill_manual(values = group_colors) +
+  labs(
+    x = "\nTest Score",
+    y = "Proportion\n",
+    fill = "Group"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    strip.text = element_text(size = 16),      # Facet title (e.g., "Group 1...")
+    axis.text = element_text(size = 14),       # Tick labels
+    axis.title = element_text(size = 16),      # Axis titles
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = "none"
+  )
+
+# Optional save
+ggsave("plots/histogram_test_scores.png", width = 12, height = 4.5, dpi = 300)
+```
